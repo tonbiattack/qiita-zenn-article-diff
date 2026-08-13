@@ -1,0 +1,14 @@
+{
+  "pairs": [
+    {
+      "qiita": "Cookie肥大化で400 Bad Request「Size of a request header field exceeds server limit」が発生したときの原因と対処",
+      "zenn": "Cookie肥大化で400 Bad Request"
+    }
+  ],
+  "ignore": {
+    "qiita": [],
+    "zenn": [
+      "VueのテンプレートとReactのJSXは何が違うのかVue.jsReact"
+    ]
+  }
+}

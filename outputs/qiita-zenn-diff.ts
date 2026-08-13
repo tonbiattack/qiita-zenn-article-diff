@@ -24,6 +24,8 @@ export type Comparison = {
 };
 
 type SameArticlePair = { qiita: string; zenn: string };
+type IgnoredTitles = { qiita?: string[]; zenn?: string[] };
+type ComparisonOptions = { specifiedPairs: SameArticlePair[]; ignoredTitles: IgnoredTitles };
 
 const QIITA_PER_PAGE = 100;
 const ZENN_PER_PAGE = 50;
@@ -91,10 +93,22 @@ function takeArticle(articles: Article[], title: string, site: Site): Article {
   return articles.splice(index, 1)[0];
 }
 
-export function compare(qiita: Article[], zenn: Article[], specifiedPairs: SameArticlePair[] = []): Comparison {
+function removeIgnoredArticles(articles: Article[], titles: string[] | undefined, site: Site): void {
+  for (const title of titles ?? []) takeArticle(articles, title, site);
+}
+
+export function compare(
+  qiita: Article[],
+  zenn: Article[],
+  specifiedPairs: SameArticlePair[] = [],
+  ignoredTitles: IgnoredTitles = {},
+): Comparison {
   // 呼び出し元の配列を変更しないため、照合対象だけをコピーして消費していく。
   const remainingQiita = [...qiita];
   const remainingZenn = [...zenn];
+  // 片側にだけ重複転載がある場合は、明示的に差分から外せるようにする。
+  removeIgnoredArticles(remainingQiita, ignoredTitles.qiita, "Qiita");
+  removeIgnoredArticles(remainingZenn, ignoredTitles.zenn, "Zenn");
   // 明示指定を先に確定させる。これにより、指定した異なるタイトルが通常のタイトル一致に影響しない。
   const both: ArticlePair[] = specifiedPairs.map((pair) => ({
     qiita: takeArticle(remainingQiita, pair.qiita, "Qiita"),
@@ -179,18 +193,41 @@ function parseArgs(): { qiitaUser: string; zennUser: string; out: string; sameTi
   };
 }
 
-async function readSpecifiedPairs(path: string | undefined): Promise<SameArticlePair[]> {
-  if (!path) return [];
+function isSameArticlePair(value: unknown): value is SameArticlePair {
+  return !!value && typeof value === "object" && typeof (value as SameArticlePair).qiita === "string" && typeof (value as SameArticlePair).zenn === "string";
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+async function readComparisonOptions(path: string | undefined): Promise<ComparisonOptions> {
+  if (!path) return { specifiedPairs: [], ignoredTitles: {} };
   let data: unknown;
   try {
     data = JSON.parse(await readFile(path, "utf8"));
   } catch (error) {
     throw new Error(`同一記事の指定ファイルを読めません: ${path} (${error instanceof Error ? error.message : error})`);
   }
-  if (!Array.isArray(data) || data.some((item) => !item || typeof item !== "object" || typeof item.qiita !== "string" || typeof item.zenn !== "string")) {
-    throw new Error("同一記事の指定ファイルは { qiita, zenn } の配列である必要があります。");
+  // 既存の配列形式も受け付け、設定追加後も以前のファイルをそのまま利用できるようにする。
+  if (Array.isArray(data)) {
+    if (data.some((item) => !isSameArticlePair(item))) throw new Error("同一記事の指定ファイルは { qiita, zenn } の配列である必要があります。");
+    return { specifiedPairs: data, ignoredTitles: {} };
   }
-  return data as SameArticlePair[];
+  if (!data || typeof data !== "object") throw new Error("同一記事の指定ファイルは配列または設定オブジェクトである必要があります。");
+  const config = data as { pairs?: unknown; ignore?: unknown };
+  if (config.pairs !== undefined && (!Array.isArray(config.pairs) || config.pairs.some((item) => !isSameArticlePair(item)))) {
+    throw new Error("pairs は { qiita, zenn } の配列である必要があります。");
+  }
+  const ignoredTitles = config.ignore as IgnoredTitles | undefined;
+  if (config.ignore !== undefined && (
+    !config.ignore || typeof config.ignore !== "object"
+    || (ignoredTitles.qiita !== undefined && !isStringArray(ignoredTitles.qiita))
+    || (ignoredTitles.zenn !== undefined && !isStringArray(ignoredTitles.zenn))
+  )) {
+    throw new Error("ignore は qiita と zenn の文字列配列を持つ必要があります。");
+  }
+  return { specifiedPairs: (config.pairs ?? []) as SameArticlePair[], ignoredTitles: (config.ignore ?? {}) as IgnoredTitles };
 }
 
 async function main(): Promise<void> {
@@ -198,7 +235,8 @@ async function main(): Promise<void> {
   console.log("Qiita / Zenn の記事一覧を取得しています...");
   // 取得元は独立しているため並列取得し、待ち時間を短くする。
   const [qiita, zenn] = await Promise.all([fetchQiita(qiitaUser), fetchZenn(zennUser)]);
-  const comparison = compare(qiita, zenn, await readSpecifiedPairs(sameTitles));
+  const { specifiedPairs, ignoredTitles } = await readComparisonOptions(sameTitles);
+  const comparison = compare(qiita, zenn, specifiedPairs, ignoredTitles);
   const markdown = makeMarkdown(`${qiitaUser} / ${zennUser}`, qiita, zenn, comparison);
   const output = resolve(out);
   await mkdir(resolve(output, ".."), { recursive: true });
