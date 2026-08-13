@@ -14,7 +14,21 @@ node .\outputs\qiita-zenn-diff.ts --qiita-user tonbi_attack --zenn-user tonbi_at
 - Zenn のみにある記事
 - 両方にある記事
 
-タイトルの完全一致を基本に、Unicode 正規化・英字の大小文字・連続空白の違いだけを吸収して照合します。異なるタイトルでも同一記事なら、`article-pairs.example.json` をコピーして `article-pairs.json` を作り、`--same-titles` で渡してください。
+タイトルの完全一致を基本に、Unicode 正規化・英字の大小文字・連続空白の違いだけを吸収して照合します。
+
+## 異なるタイトルの同一記事・除外記事を指定する
+
+設定ファイルは `--same-titles` オプションで渡します。まず雛形をコピーします。
+
+```powershell
+Copy-Item .\article-pairs.example.json .\article-pairs.json
+```
+
+`article-pairs.json` を編集した後、次のコマンドで比較します。
+
+```powershell
+node .\outputs\qiita-zenn-diff.ts --qiita-user tonbi_attack --zenn-user tonbi_attack --same-titles .\article-pairs.json --out .\qiita-zenn-diff.md
+```
 
 ```json
 {
@@ -25,7 +39,9 @@ node .\outputs\qiita-zenn-diff.ts --qiita-user tonbi_attack --zenn-user tonbi_at
 }
 ```
 
-`pairs` の組み合わせは「両方にある記事」に入り、差分から除外されます。`ignore` は片側だけにある重複転載などを差分から除外します。指定したタイトルが取得結果にない場合はエラーにするため、タイトルの打ち間違いを検出できます。
+`pairs` には Qiita と Zenn でタイトルが異なる同一記事を1組ずつ記載します。組み合わせは「両方にある記事」に入り、差分から除外されます。
+
+`ignore.qiita` と `ignore.zenn` には、片側にだけある重複転載など、差分表示そのものから外す記事タイトルを記載します。指定したタイトルが取得結果にない場合はエラーにするため、タイトルの打ち間違いを検出できます。
 
 ## 動作環境
 
