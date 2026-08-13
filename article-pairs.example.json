@@ -1,6 +1,12 @@
-[
-  {
-    "qiita": "Qiita 側の記事タイトル",
-    "zenn": "Zenn 側では異なる記事タイトル"
+{
+  "pairs": [
+    {
+      "qiita": "Qiita 側の記事タイトル",
+      "zenn": "Zenn 側では異なる記事タイトル"
+    }
+  ],
+  "ignore": {
+    "qiita": [],
+    "zenn": []
   }
-]
+}

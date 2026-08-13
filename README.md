@@ -17,12 +17,15 @@ node .\outputs\qiita-zenn-diff.ts --qiita-user tonbi_attack --zenn-user tonbi_at
 タイトルの完全一致を基本に、Unicode 正規化・英字の大小文字・連続空白の違いだけを吸収して照合します。異なるタイトルでも同一記事なら、`article-pairs.example.json` をコピーして `article-pairs.json` を作り、`--same-titles` で渡してください。
 
 ```json
-[
-  { "qiita": "Qiita 側の記事タイトル", "zenn": "Zenn 側の記事タイトル" }
-]
+{
+  "pairs": [
+    { "qiita": "Qiita 側の記事タイトル", "zenn": "Zenn 側の記事タイトル" }
+  ],
+  "ignore": { "qiita": [], "zenn": ["差分から除外する Zenn 記事タイトル"] }
+}
 ```
 
-指定した組み合わせは「両方にある記事」に入り、差分から除外されます。指定したタイトルが取得結果にない場合はエラーにするため、タイトルの打ち間違いを検出できます。
+`pairs` の組み合わせは「両方にある記事」に入り、差分から除外されます。`ignore` は片側だけにある重複転載などを差分から除外します。指定したタイトルが取得結果にない場合はエラーにするため、タイトルの打ち間違いを検出できます。
 
 ## 動作環境
 

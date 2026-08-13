@@ -33,6 +33,17 @@ test("指定したタイトルが取得結果にない場合はエラーにす�
   );
 });
 
+test("片側だけの重複転載を差分から除外しても、同名記事の照合を維持する", () => {
+  const result = compare(
+    [article("Qiita", "VueのテンプレートとReactのJSXは何が違うのか")],
+    [article("Zenn", "VueのテンプレートとReactのJSXは何が違うのか"), article("Zenn", "VueのテンプレートとReactのJSXは何が違うのかVue.jsReact")],
+    [],
+    { zenn: ["VueのテンプレートとReactのJSXは何が違うのかVue.jsReact"] },
+  );
+  assert.equal(result.both.length, 1);
+  assert.equal(result.zennOnly.length, 0);
+});
+
 test("差分は新しい公開日順に並ぶ", () => {
   const result = compare(
     [article("Qiita", "古い記事", "2026-01-01T00:00:00+09:00"), article("Qiita", "新しい記事", "2026-02-01T00:00:00+09:00")],
