@@ -43,6 +43,27 @@ node .\outputs\qiita-zenn-diff.ts --qiita-user tonbi_attack --zenn-user tonbi_at
 
 `ignore.qiita` と `ignore.zenn` には、片側にだけある重複転載など、差分表示そのものから外す記事タイトルを記載します。指定したタイトルが取得結果にない場合はエラーにするため、タイトルの打ち間違いを検出できます。
 
+### 実例
+
+タイトルが異なる Cookie 記事を同一記事として扱い、すでに同名記事がある Vue の重複転載を Zenn 側だけ除外する例です。
+
+```json
+{
+  "pairs": [
+    {
+      "qiita": "Cookie肥大化で400 Bad Request「Size of a request header field exceeds server limit」が発生したときの原因と対処",
+      "zenn": "Cookie肥大化で400 Bad Request"
+    }
+  ],
+  "ignore": {
+    "qiita": [],
+    "zenn": [
+      "VueのテンプレートとReactのJSXは何が違うのかVue.jsReact"
+    ]
+  }
+}
+```
+
 ## 動作環境
 
 Node.js 25 以降（追加パッケージ不要）

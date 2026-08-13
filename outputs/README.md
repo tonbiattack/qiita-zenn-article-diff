@@ -45,4 +45,23 @@ node .\outputs\qiita-zenn-diff.ts --qiita-user tonbi_attack --zenn-user tonbi_at
 
 `ignore.qiita` と `ignore.zenn` には、片側にだけある重複転載など、差分表示そのものから外す記事タイトルを記載します。指定したタイトルが取得結果にない場合はエラーになるため、設定の打ち間違いを検出できます。雛形はリポジトリ直下の `article-pairs.example.json` です。
 
+### 実例
+
+```json
+{
+  "pairs": [
+    {
+      "qiita": "Cookie肥大化で400 Bad Request「Size of a request header field exceeds server limit」が発生したときの原因と対処",
+      "zenn": "Cookie肥大化で400 Bad Request"
+    }
+  ],
+  "ignore": {
+    "qiita": [],
+    "zenn": [
+      "VueのテンプレートとReactのJSXは何が違うのかVue.jsReact"
+    ]
+  }
+}
+```
+
 取得に失敗したときは空の結果を出さず、HTTP エラーとして終了します。Qiita は公式 API、Zenn は公開サイトが利用している記事一覧 API を利用しています。後者は将来レスポンス形式が変わる可能性があります。
