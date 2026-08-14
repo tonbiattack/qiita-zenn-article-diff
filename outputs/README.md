@@ -14,6 +14,16 @@ node .\qiita-zenn-diff.ts
 node .\qiita-zenn-diff.ts --qiita-user tonbi_attack --zenn-user tonbi_attack --same-titles .\article-pairs.json --out .\report.md
 ```
 
+## 類似タイトルの確認候補
+
+差分のうち、表記が近い Qiita/Zenn 記事をレポートの「類似タイトルの確認候補」に表示します。候補は自動で同一記事にせず、内容を確認したうえで `pairs` に登録してください。
+
+既定では類似度60%以上、Qiita の差分記事1件につき最大3件です。調整する場合は次のように指定します。
+
+```powershell
+node .\qiita-zenn-diff.ts --same-titles .\article-pairs.json --candidate-threshold 0.75 --candidate-limit 5
+```
+
 ## 同一記事・除外記事を指定するコマンド
 
 リポジトリ直下で、設定の雛形をコピーします。
