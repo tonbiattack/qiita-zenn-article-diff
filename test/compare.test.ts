@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compare, normalizeTitle, type Article } from "../outputs/qiita-zenn-diff.ts";
+import { compare, findSimilarityCandidates, normalizeTitle, titleSimilarity, type Article } from "../outputs/qiita-zenn-diff.ts";
 
 function article(site: "Qiita" | "Zenn", title: string, publishedAt = "2026-01-01T00:00:00+09:00"): Article {
   return { site, title, normalizedTitle: normalizeTitle(title), publishedAt, url: `https://example.test/${site}/${title}` };
@@ -50,4 +50,23 @@ test("差分は新しい公開日順に並ぶ", () => {
     [],
   );
   assert.deepEqual(result.qiitaOnly.map((item) => item.title), ["新しい記事", "古い記事"]);
+});
+
+test("短い転載タイトルと長いタイトルを類似候補として提案する", () => {
+  const result = compare(
+    [article("Qiita", "Cookie肥大化で400 Bad Request「Size of a request header field exceeds server limit」が発生したときの原因と対処")],
+    [article("Zenn", "Cookie肥大化で400 Bad Request")],
+  );
+  const candidates = findSimilarityCandidates(result);
+  assert.equal(candidates.length, 1);
+  assert.ok(candidates[0].score >= 0.6);
+  assert.ok(titleSimilarity("Cookie肥大化で400 Bad Request", "まったく別の記事") < 0.6);
+});
+
+test("類似候補はQiita記事ごとに指定した上位件数へ制限する", () => {
+  const result = compare(
+    [article("Qiita", "TypeScript 型システム入門")],
+    [article("Zenn", "TypeScript 型入門"), article("Zenn", "TypeScript 型システム")],
+  );
+  assert.equal(findSimilarityCandidates(result, 0.6, 1).length, 1);
 });

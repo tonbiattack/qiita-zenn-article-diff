@@ -23,6 +23,8 @@ export type Comparison = {
   both: ArticlePair[];
 };
 
+export type SimilarityCandidate = { qiita: Article; zenn: Article; score: number };
+
 type SameArticlePair = { qiita: string; zenn: string };
 type IgnoredTitles = { qiita?: string[]; zenn?: string[] };
 type ComparisonOptions = { specifiedPairs: SameArticlePair[]; ignoredTitles: IgnoredTitles };
@@ -30,6 +32,8 @@ type ComparisonOptions = { specifiedPairs: SameArticlePair[]; ignoredTitles: Ign
 const QIITA_PER_PAGE = 100;
 const ZENN_PER_PAGE = 50;
 const DEFAULT_USER = "tonbi_attack";
+const DEFAULT_CANDIDATE_THRESHOLD = 0.6;
+const DEFAULT_CANDIDATE_LIMIT = 3;
 
 export function normalizeTitle(title: string): string {
   // 表記ゆれの吸収は最小限に留め、別記事を誤って「両方」と判定しない。
@@ -136,6 +140,37 @@ export function compare(
   return { qiitaOnly: qiitaOnly.sort(byNewest), zennOnly: zennOnly.sort(byNewest), both: both.sort((a, b) => byNewest(a.qiita, b.qiita)) };
 }
 
+function titleBigrams(title: string): Set<string> {
+  // 記号を除いた2文字単位にすると、日本語の単語分割ライブラリなしでも部分一致を拾える。
+  const characters = Array.from(normalizeTitle(title)).filter((character) => /[\p{L}\p{N}]/u.test(character));
+  if (characters.length < 2) return new Set(characters);
+  return new Set(characters.slice(0, -1).map((character, index) => character + characters[index + 1]));
+}
+
+export function titleSimilarity(left: string, right: string): number {
+  const leftBigrams = titleBigrams(left);
+  const rightBigrams = titleBigrams(right);
+  if (leftBigrams.size === 0 || rightBigrams.size === 0) return 0;
+  const intersection = [...leftBigrams].filter((bigram) => rightBigrams.has(bigram)).length;
+  // 短いタイトルが長いタイトルに含まれる転載を優先しつつ、偶然の数文字一致は Dice 係数で抑える。
+  const overlap = intersection / Math.min(leftBigrams.size, rightBigrams.size);
+  const dice = (2 * intersection) / (leftBigrams.size + rightBigrams.size);
+  return 0.7 * overlap + 0.3 * dice;
+}
+
+export function findSimilarityCandidates(
+  comparison: Comparison,
+  threshold = DEFAULT_CANDIDATE_THRESHOLD,
+  limitPerQiita = DEFAULT_CANDIDATE_LIMIT,
+): SimilarityCandidate[] {
+  const candidates = comparison.qiitaOnly.flatMap((qiita) => comparison.zennOnly
+    .map((zenn) => ({ qiita, zenn, score: titleSimilarity(qiita.title, zenn.title) }))
+    .filter((candidate) => candidate.score >= threshold)
+    .sort((a, b) => b.score - a.score || Date.parse(b.zenn.publishedAt) - Date.parse(a.zenn.publishedAt))
+    .slice(0, limitPerQiita));
+  return candidates.sort((a, b) => b.score - a.score || Date.parse(b.qiita.publishedAt) - Date.parse(a.qiita.publishedAt));
+}
+
 function date(value: string): string {
   return new Intl.DateTimeFormat("ja-JP", { timeZone: "Asia/Tokyo", dateStyle: "medium" }).format(new Date(value));
 }
@@ -144,7 +179,7 @@ function articleRow(article: Article): string {
   return `| ${date(article.publishedAt)} | [${article.title}](${article.url}) |`;
 }
 
-function makeMarkdown(user: string, qiita: Article[], zenn: Article[], comparison: Comparison): string {
+function makeMarkdown(user: string, qiita: Article[], zenn: Article[], comparison: Comparison, candidates: SimilarityCandidate[]): string {
   const section = (title: string, articles: Article[]) => [
     `## ${title} (${articles.length}件)`,
     "",
@@ -155,6 +190,8 @@ function makeMarkdown(user: string, qiita: Article[], zenn: Article[], compariso
   ].join("\n");
   const pairedRows = comparison.both.map(({ qiita: q, zenn: z, matchedBy }) =>
     `| ${date(q.publishedAt)} / ${date(z.publishedAt)} | [Qiita](${q.url}) | [Zenn](${z.url}) | ${matchedBy === "specified" ? "指定" : "タイトル一致"} |`);
+  const candidateRows = candidates.map(({ qiita: q, zenn: z, score }) =>
+    `| ${(score * 100).toFixed(0)}% | [${q.title}](${q.url}) | [${z.title}](${z.url}) |`);
   return [
     `# Qiita / Zenn 記事差分: ${user}`,
     "",
@@ -170,6 +207,14 @@ function makeMarkdown(user: string, qiita: Article[], zenn: Article[], compariso
     "",
     section("Qiita のみ", comparison.qiitaOnly),
     section("Zenn のみ", comparison.zennOnly),
+    "## 類似タイトルの確認候補",
+    "",
+    "候補は自動で同一記事にはしません。内容を確認し、同一なら `article-pairs.json` の `pairs` に追加してください。",
+    "",
+    "| 類似度 | Qiita | Zenn |",
+    "| --- | --- | --- |",
+    ...candidateRows,
+    "",
     "## 両方にある記事 (最新順)",
     "",
     "| Qiita / Zenn 公開日 | Qiita | Zenn | 判定 |",
@@ -179,17 +224,24 @@ function makeMarkdown(user: string, qiita: Article[], zenn: Article[], compariso
   ].join("\n");
 }
 
-function parseArgs(): { qiitaUser: string; zennUser: string; out: string; sameTitles: string | undefined } {
+function parseArgs(): { qiitaUser: string; zennUser: string; out: string; sameTitles: string | undefined; candidateThreshold: number; candidateLimit: number } {
   const args = process.argv.slice(2);
   const valueOf = (flag: string, fallback: string) => {
     const index = args.indexOf(flag);
     return index >= 0 && args[index + 1] ? args[index + 1] : fallback;
+  };
+  const numberOf = (flag: string, fallback: number, min: number, max: number) => {
+    const value = Number(valueOf(flag, String(fallback)));
+    if (!Number.isFinite(value) || value < min || value > max) throw new Error(`${flag} は ${min} から ${max} の数値で指定してください。`);
+    return value;
   };
   return {
     qiitaUser: valueOf("--qiita-user", DEFAULT_USER),
     zennUser: valueOf("--zenn-user", DEFAULT_USER),
     out: valueOf("--out", "qiita-zenn-diff.md"),
     sameTitles: args.includes("--same-titles") ? valueOf("--same-titles", "") : undefined,
+    candidateThreshold: numberOf("--candidate-threshold", DEFAULT_CANDIDATE_THRESHOLD, 0, 1),
+    candidateLimit: numberOf("--candidate-limit", DEFAULT_CANDIDATE_LIMIT, 1, 20),
   };
 }
 
@@ -231,17 +283,18 @@ async function readComparisonOptions(path: string | undefined): Promise<Comparis
 }
 
 async function main(): Promise<void> {
-  const { qiitaUser, zennUser, out, sameTitles } = parseArgs();
+  const { qiitaUser, zennUser, out, sameTitles, candidateThreshold, candidateLimit } = parseArgs();
   console.log("Qiita / Zenn の記事一覧を取得しています...");
   // 取得元は独立しているため並列取得し、待ち時間を短くする。
   const [qiita, zenn] = await Promise.all([fetchQiita(qiitaUser), fetchZenn(zennUser)]);
   const { specifiedPairs, ignoredTitles } = await readComparisonOptions(sameTitles);
   const comparison = compare(qiita, zenn, specifiedPairs, ignoredTitles);
-  const markdown = makeMarkdown(`${qiitaUser} / ${zennUser}`, qiita, zenn, comparison);
+  const candidates = findSimilarityCandidates(comparison, candidateThreshold, candidateLimit);
+  const markdown = makeMarkdown(`${qiitaUser} / ${zennUser}`, qiita, zenn, comparison, candidates);
   const output = resolve(out);
   await mkdir(resolve(output, ".."), { recursive: true });
   await writeFile(output, markdown, "utf8");
-  console.log(`完了: Qiita ${qiita.length}件, Zenn ${zenn.length}件, Qiitaのみ ${comparison.qiitaOnly.length}件, Zennのみ ${comparison.zennOnly.length}件`);
+  console.log(`完了: Qiita ${qiita.length}件, Zenn ${zenn.length}件, Qiitaのみ ${comparison.qiitaOnly.length}件, Zennのみ ${comparison.zennOnly.length}件, 類似候補 ${candidates.length}件`);
   console.log(`レポート: ${output}`);
 }
 

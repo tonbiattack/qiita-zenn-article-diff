@@ -16,6 +16,13 @@ node .\outputs\qiita-zenn-diff.ts --qiita-user tonbi_attack --zenn-user tonbi_at
 
 タイトルの完全一致を基本に、Unicode 正規化・英字の大小文字・連続空白の違いだけを吸収して照合します。
 
+完全一致しなかった記事については、レポートの「類似タイトルの確認候補」に候補を表示します。候補は自動で同一記事にせず、内容を確認してから `pairs` に登録してください。既定では類似度60%以上を表示し、Qiita の差分記事1件につき最大3件です。
+
+```powershell
+# 類似度を75%以上、Qiita記事ごとに最大5件へ変更する
+node .\outputs\qiita-zenn-diff.ts --same-titles .\article-pairs.json --candidate-threshold 0.75 --candidate-limit 5
+```
+
 ## 異なるタイトルの同一記事・除外記事を指定する
 
 設定ファイルは `--same-titles` オプションで渡します。まず雛形をコピーします。
